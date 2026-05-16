@@ -1,0 +1,24 @@
+name: otel_dio_example_app
+description: Runnable demo of otel_dio against a local LGTM
+  stack (Grafana / Loki / Tempo / Mimir). Hits a public test endpoint
+  with a handful of request shapes — success, 4xx, 5xx, transport
+  failure — so every interceptor code path produces visible spans
+  in Tempo.
+publish_to: none
+version: 0.0.1
+
+environment:
+  sdk: ^3.0.0
+
+dependencies:
+  otel_dio:
+    path: ..
+  # Example apps use the Pro SDK to demonstrate the one-character
+  # switch (OTel.initialize -> DOTel.initialize). The package itself
+  # still depends only on the OSS SDK so non-Pro users can keep it.
+  dartastic_opentelemetry_pro:
+    path: ../../../pro/dartastic_opentelemetry_pro
+  dio: ^5.9.0
+
+dev_dependencies:
+  dart_flutter_team_lints: ^3.5.2

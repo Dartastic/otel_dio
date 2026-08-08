@@ -93,11 +93,60 @@ contain credentials" requirement.
 
 ## Interceptor ordering
 
-Add `OTelDioInterceptor` **first** in your interceptor chain so the
-span encloses everything other interceptors do (auth-token refresh,
-retry, request logging). The propagated headers are injected at the end
-of `onRequest`, so anything an auth interceptor adds afterwards is also
-covered by the same span.
+Add `OTelDioInterceptor` **first** in your interceptor chain. This is
+a requirement, not a preference: the span must enclose everything the
+other interceptors do (auth-token refresh, retry, request logging). A
+span started after a retry interceptor misses retried attempts; one
+started after auth misses auth latency. The propagated headers are
+injected at the end of `onRequest`, so anything an auth interceptor
+adds afterwards is also covered by the same span.
+
+## Deduplication contract
+
+The same request can be observed at two layers: this interceptor
+(closest to the application) and any transport-level HTTP
+instrumentation underneath it (a global `HttpOverrides`-based tracker,
+an instrumented `HttpClient` handed to the adapter, and so on). The
+contract is: **the layer closest to the application wins; lower layers
+defer.**
+
+The standards-based guard is the W3C `traceparent` header. This
+interceptor injects `traceparent` into the outgoing request, so a
+transport-layer instrumentation that finds `traceparent` already
+present at send time should suppress its own span and per-request
+metrics for that request. Any OTel-compliant upper layer qualifies —
+this interceptor, `package:http` instrumentation, or manual context
+injection — with no sentinel headers and no coordination between
+packages.
+
+Within Dio itself the guard is the span stashed in
+`RequestOptions.extra`: if `OTelDioInterceptor` is accidentally added
+twice, the second instance sees the stashed span and does nothing, so
+nothing double-emits and no span leaks unended.
+
+Known edge: if you deliberately strip `traceparent` for certain hosts
+(for example CORS-sensitive third parties), a lower-layer tracker
+loses the guard for those hosts. Add those hosts to that tracker's
+ignore list.
+
+## Ignoring URLs
+
+Requests whose full URL matches any entry in `ignoreUrlPatterns`
+(`String` substring or `RegExp`) are not instrumented at all — no
+span, no header injection:
+
+```dart
+OTelDioInterceptor(
+  ignoreUrlPatterns: [
+    RegExp(r'/v1/(traces|metrics|logs)$'), // OTLP upload endpoints
+    'analytics.example.com',
+  ],
+)
+```
+
+If your telemetry exporter shares this Dio instance, ignore its
+endpoints — otherwise every export becomes a span, which is itself
+exported.
 
 ## Body sizes
 

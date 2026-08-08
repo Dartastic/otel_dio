@@ -1,16 +1,18 @@
 # otel_dio example app
 
-A standalone runnable demo of `otel_dio` exporting telemetry
-to a local LGTM stack (Grafana + Loki + Tempo + Mimir).
+A standalone runnable demo of `otel_dio` exporting telemetry to a
+local OTLP-capable backend with a trace UI.
 
 ## Run
 
 ```sh
-# 1. Start the LGTM stack (from the dartastic-pro repo root)
-docker compose -f tool/lgtm/docker-compose.yml up -d
+# 1. Start any OTLP-compatible backend with a trace UI, e.g. an
+#    all-in-one dev-observability container, publishing OTLP on
+#    4317/4318 and the UI on 3000:
+docker run --rm -p 3000:3000 -p 4317:4317 -p 4318:4318 <your-otlp-backend-image>
 
 # 2. Run the app
-cd dart/otel_dio/example_app
+cd example_app
 dart pub get
 dart run bin/main.dart
 ```
@@ -18,7 +20,7 @@ dart run bin/main.dart
 ## What it does
 
 Five scenarios, each in its own parent span so they appear as distinct
-traces in Tempo:
+traces in your trace UI:
 
 | Scenario | Interceptor branch exercised |
 |---|---|
@@ -30,7 +32,7 @@ traces in Tempo:
 
 ## Where to look
 
-Grafana → Explore → Tempo datasource:
+In your trace UI (http://localhost:3000 for the container above):
 
 - Service name: `dio-otel-example-app`
 - Each scenario span has child spans named after the HTTP method

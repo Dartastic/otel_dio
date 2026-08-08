@@ -225,6 +225,49 @@ void main() {
       await dio.get<dynamic>('/things');
       // No span was ended via the response path, but no exception either.
     });
+
+    test('dedup guard: a second OTelDioInterceptor emits nothing extra',
+        () async {
+      dio.interceptors.add(OTelDioInterceptor());
+      expect(dio.interceptors.whereType<OTelDioInterceptor>(), hasLength(2));
+
+      await dio.get<dynamic>('/things');
+
+      // Exactly one span: the first interceptor owns the request, the
+      // second sees the stashed span and defers. Without the guard the
+      // first span would be overwritten and never ended (a leak).
+      expect(exporter.spans, hasLength(1));
+      expect(exporter.spans.single.name, equals('GET'));
+    });
+
+    test('completed request leaves no span stashed in extra', () async {
+      await dio.get<dynamic>('/things');
+      expect(
+        adapter.lastOptions!.extra[OTelDioInterceptor.spanExtraKey],
+        isNull,
+        reason: 'the guard must not outlive the request it protected '
+            '(a retry re-entering the chain should get a fresh span)',
+      );
+    });
+
+    test('ignoreUrlPatterns: matching request gets no span and no headers',
+        () async {
+      dio.interceptors.clear();
+      dio.interceptors.add(
+        OTelDioInterceptor(
+          ignoreUrlPatterns: [RegExp(r'/v1/traces$'), '/healthz'],
+        ),
+      );
+
+      await dio.post<dynamic>('/v1/traces');
+      await dio.get<dynamic>('/healthz');
+      expect(exporter.spans, isEmpty);
+      expect(adapter.lastOptions!.headers['traceparent'], isNull);
+
+      await dio.get<dynamic>('/users/42');
+      expect(exporter.spans, hasLength(1));
+      expect(adapter.lastOptions!.headers['traceparent'], isA<String>());
+    });
   });
 }
 

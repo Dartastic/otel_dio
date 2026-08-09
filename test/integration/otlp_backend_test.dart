@@ -96,8 +96,7 @@ void main() {
       expect(
         found,
         isNotNull,
-        reason:
-            'Backend never returned trace $traceIdHex emitted at '
+        reason: 'Backend never returned trace $traceIdHex emitted at '
             '$exportTimestamp. Check the backend container logs.',
       );
 

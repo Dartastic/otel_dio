@@ -1,7 +1,7 @@
 // Licensed under the Apache License, Version 2.0
 // Copyright 2025, Mindful Software LLC, All rights reserved.
 
-import 'package:dartastic_opentelemetry/dartastic_opentelemetry.dart';
+import 'package:dartastic_opentelemetry_api/dartastic_opentelemetry_api.dart';
 import 'package:dio/dio.dart';
 
 /// OpenTelemetry client instrumentation for `package:dio`.
@@ -63,24 +63,20 @@ class OTelDioInterceptor extends Interceptor {
   ///   through this Dio instance would otherwise instrument its own
   ///   uploads) or hosts you never want traced.
   OTelDioInterceptor({
-    Tracer? tracer,
+    APITracer? tracer,
     String Function(RequestOptions options)? spanNameBuilder,
     this.recordRequestBodySize = true,
     this.recordResponseBodySize = true,
     this.ignoreUrlPatterns = const <Pattern>[],
-  })  : _tracer = tracer ?? OTel.tracerProvider().getTracer('otel_dio'),
-        _spanNameBuilder = spanNameBuilder ?? _defaultSpanName,
-        _traceContextPropagator = W3CTraceContextPropagator(),
-        _baggagePropagator = W3CBaggagePropagator();
+  })  : _tracer = tracer ?? OTelAPI.tracerProvider().getTracer('otel_dio'),
+        _spanNameBuilder = spanNameBuilder ?? _defaultSpanName;
 
   /// Key under which the active span is stashed inside
   /// `RequestOptions.extra` so `onResponse` / `onError` can finish it.
   static const String spanExtraKey = 'otel_dio.span';
 
-  final Tracer _tracer;
+  final APITracer _tracer;
   final String Function(RequestOptions options) _spanNameBuilder;
-  final W3CTraceContextPropagator _traceContextPropagator;
-  final W3CBaggagePropagator _baggagePropagator;
 
   /// Whether to set `http.request.body.size` from `Content-Length`.
   final bool recordRequestBodySize;
@@ -103,7 +99,7 @@ class OTelDioInterceptor extends Interceptor {
     // Dedup guard: another OTelDioInterceptor earlier in the chain
     // already owns this request — starting a second span would leak
     // the first (it would never be ended) and double-emit.
-    if (options.extra[spanExtraKey] is Span) {
+    if (options.extra[spanExtraKey] is APISpan) {
       handler.next(options);
       return;
     }
@@ -143,7 +139,7 @@ class OTelDioInterceptor extends Interceptor {
     final span = _tracer.startSpan(
       _spanNameBuilder(options),
       kind: SpanKind.client,
-      attributes: OTel.attributesFromMap(attrs),
+      attributes: OTelAPI.attributesFromMap(attrs),
     );
 
     // Inject W3C trace context + baggage into the outbound headers so
@@ -151,8 +147,9 @@ class OTelDioInterceptor extends Interceptor {
     final headerCarrier = <String, String>{};
     final setter = _MapSetter(headerCarrier);
     final ctx = Context.current.withSpan(span);
-    _traceContextPropagator.inject(ctx, headerCarrier, setter);
-    _baggagePropagator.inject(ctx, headerCarrier, setter);
+    // The app's configured propagators (W3C trace context + baggage by
+    // default; OTEL_PROPAGATORS overrides).
+    OTelAPI.textMapPropagator.inject(ctx, headerCarrier, setter);
     options.headers.addAll(headerCarrier);
 
     options.extra[spanExtraKey] = span;
@@ -165,7 +162,7 @@ class OTelDioInterceptor extends Interceptor {
     ResponseInterceptorHandler handler,
   ) {
     final span = response.requestOptions.extra.remove(spanExtraKey);
-    if (span is Span) {
+    if (span is APISpan) {
       _finishWithResponse(span, response);
     }
     handler.next(response);
@@ -177,18 +174,18 @@ class OTelDioInterceptor extends Interceptor {
     ErrorInterceptorHandler handler,
   ) {
     final span = err.requestOptions.extra.remove(spanExtraKey);
-    if (span is Span) {
+    if (span is APISpan) {
       _finishWithError(span, err);
     }
     handler.next(err);
   }
 
-  void _finishWithResponse(Span span, Response<dynamic> response) {
+  void _finishWithResponse(APISpan span, Response<dynamic> response) {
     final status = response.statusCode;
     final extra = <Attribute<Object>>[];
     if (status != null) {
       extra.add(
-        OTel.attributeInt(Http.httpResponseStatusCode.key, status),
+        OTelAPI.attributeInt(Http.httpResponseStatusCode.key, status),
       );
       if (status >= 400) {
         span.setStatus(
@@ -200,21 +197,21 @@ class OTelDioInterceptor extends Interceptor {
     if (recordResponseBodySize) {
       final size = _contentLength(response.headers.map);
       if (size != null) {
-        extra.add(OTel.attributeInt(Http.httpResponseBodySize.key, size));
+        extra.add(OTelAPI.attributeInt(Http.httpResponseBodySize.key, size));
       }
     }
     if (extra.isNotEmpty) {
-      span.addAttributes(OTel.attributes(extra));
+      span.addAttributes(OTelAPI.attributes(extra));
     }
     span.end();
   }
 
-  void _finishWithError(Span span, DioException err) {
+  void _finishWithError(APISpan span, DioException err) {
     final response = err.response;
     if (response?.statusCode != null) {
       span.addAttributes(
-        OTel.attributes([
-          OTel.attributeInt(
+        OTelAPI.attributes([
+          OTelAPI.attributeInt(
             Http.httpResponseStatusCode.key,
             response!.statusCode!,
           ),
@@ -224,8 +221,8 @@ class OTelDioInterceptor extends Interceptor {
 
     // error.type — runtime class of the underlying error (per OTel spec).
     span.addAttributes(
-      OTel.attributes([
-        OTel.attributeString(
+      OTelAPI.attributes([
+        OTelAPI.attributeString(
           ErrorAttributes.errorType.key,
           (err.error ?? err).runtimeType.toString(),
         ),

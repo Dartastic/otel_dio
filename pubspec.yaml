@@ -1,8 +1,7 @@
 name: otel_dio
 description: >-
-  OpenTelemetry instrumentation for `package:dio`. An Interceptor that wraps
-  each request in a CLIENT-kind span, sets HTTP semconv attributes and
-  injects W3C trace-context headers.
+  OpenTelemetry instrumentation for dio by Dartastic.io. Adds standard
+  OpenTelemetry observability to applications that use dio.
 version: 0.3.1-wip
 repository: https://github.com/dartastic/otel_dio
 homepage: https://dartastic.io

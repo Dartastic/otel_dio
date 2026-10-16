@@ -2,7 +2,7 @@ name: otel_dio
 description: >-
   OpenTelemetry instrumentation for dio by Dartastic.io. Adds standard
   OpenTelemetry observability to applications that use dio.
-version: 0.3.1
+version: 0.3.2-wip
 repository: https://github.com/dartastic/otel_dio
 homepage: https://dartastic.io
 

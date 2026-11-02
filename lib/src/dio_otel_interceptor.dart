@@ -219,6 +219,14 @@ class OTelDioInterceptor extends Interceptor {
       );
     }
 
+    // The caller cancelled the request (its CancelToken). HTTP semconv:
+    // a deliberate cancellation is not an error, so the status stays
+    // unset, with no error.type and no exception event.
+    if (err.type == DioExceptionType.cancel) {
+      span.end();
+      return;
+    }
+
     // error.type — runtime class of the underlying error (per OTel spec).
     span.addAttributes(
       OTelAPI.attributes([

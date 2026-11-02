@@ -112,7 +112,8 @@ Add one interceptor and every Dio request gets:
 - W3C `traceparent` / `tracestate` / `baggage` headers injected so the
   downstream service joins the same trace.
 - Exception recording (`recordException` + `error.type` + `Error` status)
-  on transport failures and 4xx / 5xx responses.
+  on transport failures and 4xx / 5xx responses. A request the caller
+  cancels is not an error.
 
 ## Why
 
@@ -186,7 +187,11 @@ Follows the OTel
   template is known; pass `spanNameBuilder` if you have one.
 - **Span kind** is `CLIENT`.
 - **Span status** is set to `Error` for 4xx / 5xx responses and any
-  `DioException`; otherwise it follows the SDK default.
+  `DioException`; otherwise it follows the SDK default. A request the
+  caller cancels with its `CancelToken` (`DioExceptionType.cancel`) is
+  not an error: the status stays unset, with no `error.type` and no
+  exception event, as the HTTP semantic conventions say for a
+  deliberate cancellation.
 
 Userinfo in the URL (`https://alice:secret@host/...`) is redacted to
 `https://REDACTED:REDACTED@host/...` per the spec's "URL.full SHOULD NOT

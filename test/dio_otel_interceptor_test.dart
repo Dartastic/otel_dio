@@ -51,6 +51,24 @@ class _FakeAdapter implements HttpClientAdapter {
   void close({bool force = false}) {}
 }
 
+/// Adapter whose request never answers, so the caller can cancel it.
+class _HangingAdapter implements HttpClientAdapter {
+  final Completer<void> started = Completer<void>();
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) {
+    started.complete();
+    return Completer<ResponseBody>().future;
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
 /// In-memory span exporter so we can assert what the interceptor produced.
 class _MemorySpanExporter implements SpanExporter {
   final List<Span> spans = [];
@@ -178,6 +196,31 @@ void main() {
         for (final a in span.attributes.toList()) a.key: a.value,
       };
       expect(attrs['error.type'], equals('FakeSocketException'));
+    });
+
+    test('a request the caller cancels is not an error', () async {
+      final adapter = _HangingAdapter();
+      dio.httpClientAdapter = adapter;
+      final cancel = CancelToken();
+
+      final sent = dio.get<dynamic>('/tiles/1/2/3', cancelToken: cancel);
+      await adapter.started.future;
+      cancel.cancel('screen closed');
+
+      await expectLater(
+        sent,
+        throwsA(
+          isA<DioException>()
+              .having((e) => e.type, 'type', DioExceptionType.cancel),
+        ),
+      );
+      final span = exporter.spans.single;
+      expect(span.status, equals(SpanStatusCode.Unset));
+      final attrs = {
+        for (final a in span.attributes.toList()) a.key: a.value,
+      };
+      expect(attrs.containsKey('error.type'), isFalse);
+      expect(span.spanEvents ?? [], isEmpty);
     });
 
     test('span name is overridable via spanNameBuilder', () async {
